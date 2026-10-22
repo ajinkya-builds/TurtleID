@@ -68,18 +68,25 @@ def _publish_secrets() -> None:
 
     Existing environment variables win, so a local .env or a shell export is
     not overridden by a deployment secret of the same name.
+
+    A missing secrets.toml is the normal local case. Reading st.secrets anyway
+    makes Streamlit print "No secrets found" once for every key, because a
+    failed parse is not cached. Skip the lookup unless a file is actually there.
     """
     try:
-        secrets = st.secrets
+        paths = st.config.get_option("secrets.files")
     except Exception:
-        return  # no secrets.toml, which is the normal local case
+        return
+    if not any(os.path.exists(path) for path in paths):
+        return
+    try:
+        secrets = st.secrets.to_dict()
+    except Exception:
+        return
     for key in ("IUCN_API_TOKEN", "CHELONID_S3_BUCKET", "CHELONID_S3_ACCESS_KEY",
                 "CHELONID_S3_SECRET_KEY", "CHELONID_S3_ENDPOINT",
                 "CHELONID_S3_REGION", "CHELONID_S3_PREFIX"):
-        try:
-            value = secrets[key]
-        except Exception:
-            continue
+        value = secrets.get(key)
         if value and not os.environ.get(key):
             os.environ[key] = str(value)
 

@@ -35,8 +35,20 @@ PUBLISHED_GALLERY_PATH = DATA_DIR / "gallery.npz"
 REFERENCE_IMAGE_DIR = BASE_DIR / "reference_images"
 REFERENCE_MANIFEST = DATA_DIR / "reference_images.json"
 
-for _d in (MODEL_DIR, RECORD_DIR, LOG_DIR):
+# Hugging Face / OpenCLIP / transformers weights stay ON THIS VOLUME.
+# Home ~/.cache/huggingface has been wiped by tools that do not have access
+# to the Wednesday disk; never rely on that path for TurtleID models.
+HF_CACHE_DIR = MODEL_DIR / "hf_cache"
+
+for _d in (MODEL_DIR, RECORD_DIR, LOG_DIR, HF_CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+import os as _os
+
+_os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
+_os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(HF_CACHE_DIR / "hub"))
+_os.environ.setdefault("TRANSFORMERS_CACHE", str(HF_CACHE_DIR / "transformers"))
+_os.environ.setdefault("OPENCLIP_CACHE_DIR", str(HF_CACHE_DIR / "open_clip"))
 
 # ---------------------------------------------------------------- image handling
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024

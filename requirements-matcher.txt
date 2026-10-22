@@ -1,0 +1,8 @@
+# Species matcher only. The Streamlit app does not import this.
+# BioCLIP 2 is loaded through OpenCLIP from Hugging Face on first use.
+open-clip-torch==3.3.0
+# High-accuracy offline stack (scripts/score_turtles_v2.py)
+scikit-learn>=1.3
+transformers>=4.45
+accelerate
+timm

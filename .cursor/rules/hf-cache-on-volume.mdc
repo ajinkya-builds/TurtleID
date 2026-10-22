@@ -1,0 +1,15 @@
+---
+description: Keep Hugging Face / model weights on the Wednesday TurtleID volume (not ~/.cache)
+alwaysApply: true
+---
+
+# Model cache lives on this volume
+
+Ajinkya does **not** give Gemini access to `/Volumes/Wednesday/Conservation Projects/TurtleID`. Home-directory HF caches (`~/.cache/huggingface`) have been wiped by outside cleanup and lost BioCLIP 2.5, BioCAP, DINOv2, and GroundingDINO weights.
+
+**Always:**
+
+- Download and store Hugging Face / OpenCLIP / transformers weights under `models/hf_cache/` on this volume.
+- Rely on `config.py` setting `HF_HOME` / `HUGGINGFACE_HUB_CACHE` before any model load.
+- Never assume `~/.cache/huggingface` still has TurtleID models.
+- When the stack needs models again, warm the on-volume cache first; do not reintroduce home-only caching.
