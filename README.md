@@ -5,6 +5,9 @@ YOLOv8 image classification, backed by a reference database of 30 taxa compiled
 from published literature, IUCN assessments and standard handbooks, with a
 morphological key that works without the model.
 
+**Working notes** from the October 2026 BioCLIP offline stack, benchmarks, and
+the feature-checklist plan live under [`docs/`](docs/README.md).
+
 Covers the non-marine chelonians of India — Geoemydidae (16), Trionychidae (8),
 Testudinidae (5) — plus the exotic Red-eared Slider, which is included
 deliberately because confusing it with a native Schedule I species is the most
