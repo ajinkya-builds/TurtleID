@@ -16,6 +16,7 @@ from core.inference import (
     TrainedClassifier,
     OODFilter,
 )
+from core.matcher import MatcherIdentifier, load_backbone, Gallery
 
 # Initialise FastAPI app
 app = FastAPI(title="Chelonid-ID Mobile API")
@@ -39,12 +40,10 @@ async def startup_event():
     logging.basicConfig(level=logging.INFO)
     try:
         logging.info("Loading database...")
-        db = SpeciesDB(config.SPECIES_DB_PATH)
+        db = SpeciesDB.load(config.SPECIES_DB_PATH)
         logging.info("Loading model...")
 
         # Determine if we should load the trained classifier or just the matcher
-        # For simplicity, we assume the trained classifier is available for the backend
-        # In a real deployment, we might need logic from `app.py` to pick the best model.
         if config.CLASSIFIER_PATH.exists():
              ood = None
              if config.CALIBRATION_PATH.exists():
@@ -59,12 +58,12 @@ async def startup_event():
              logging.info("Trained classifier loaded.")
         else:
             # Fallback to matcher if no trained classifier
-            from core.matcher import Gallery, embed_images, load_backbone
-            import numpy as np
+            from core.matcher import Gallery, MatcherIdentifier, load_backbone
             if config.GALLERY_PATH.exists():
                 gallery = Gallery.load(config.GALLERY_PATH)
-                # Need a fallback identifier wrapper here, or just raise error if model missing
-                logging.warning("No trained classifier found. API requires trained models.")
+                backbone = load_backbone()
+                identifier = MatcherIdentifier(gallery=gallery, backbone=backbone)
+                logging.info("Matcher gallery loaded as fallback backend.")
             else:
                  logging.error("No models found!")
     except Exception as e:
@@ -102,7 +101,7 @@ async def identify(request: IdentifyRequest):
              "tier": result.tier.name,
              "species_id": top_match.species_id,
              "scientific_name": species_info.scientific_name if species_info else "Unknown",
-             "common_name": species_info.common_name if species_info else "Unknown",
+             "common_name": species_info.common_en if species_info else "Unknown",
              "confidence": top_match.probability
         }
 
