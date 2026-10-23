@@ -2,108 +2,97 @@ import io
 import json
 import logging
 import base64
+from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 # Setup basic configuration and models
 import config
 from core.database import SpeciesDB
-from core.inference import (
-    ChelonidIdentifier,
-    DeterminationTier,
-    TrainedClassifier,
-    OODFilter,
-)
+from core.photo_match import BioClipMatcher
 
 # Initialise FastAPI app
 app = FastAPI(title="Chelonid-ID Mobile API")
 
-# Allow CORS for GitHub Pages frontend
+# Allow CORS for GitHub Pages frontend and local testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, this should be restricted to the github pages URL
+    allow_origins=[
+        "https://ajinkya-builds.github.io",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Load database and model at startup
+# Global instances
 db = None
-identifier = None
+matcher = None
+model_ready = False
 
 @app.on_event("startup")
 async def startup_event():
-    global db, identifier
+    global db, matcher, model_ready
     logging.basicConfig(level=logging.INFO)
     try:
-        logging.info("Loading database...")
-        db = SpeciesDB(config.SPECIES_DB_PATH)
-        logging.info("Loading model...")
+        logging.info("Loading Species Database...")
+        db = SpeciesDB.load()
 
-        # Determine if we should load the trained classifier or just the matcher
-        # For simplicity, we assume the trained classifier is available for the backend
-        # In a real deployment, we might need logic from `app.py` to pick the best model.
-        if config.CLASSIFIER_PATH.exists():
-             ood = None
-             if config.CALIBRATION_PATH.exists():
-                 cal = json.loads(config.CALIBRATION_PATH.read_text())
-                 ood = OODFilter(threshold=cal.get("energy_threshold", config.DEFAULT_ENERGY_THRESHOLD))
-             model = TrainedClassifier.load(config.CLASSIFIER_PATH, config.CALIBRATION_PATH)
-             identifier = ChelonidIdentifier(
-                 model=model,
-                 detector_path=config.DETECTOR_PATH if config.DETECTOR_PATH.exists() else None,
-                 ood=ood
-             )
-             logging.info("Trained classifier loaded.")
-        else:
-            # Fallback to matcher if no trained classifier
-            from core.matcher import Gallery, embed_images, load_backbone
-            import numpy as np
-            if config.GALLERY_PATH.exists():
-                gallery = Gallery.load(config.GALLERY_PATH)
-                # Need a fallback identifier wrapper here, or just raise error if model missing
-                logging.warning("No trained classifier found. API requires trained models.")
-            else:
-                 logging.error("No models found!")
+        logging.info("Loading BioClipMatcher (foundation models)...")
+        # This will trigger HF weight downloads to models/hf_cache on first boot
+        matcher = BioClipMatcher(db=db)
+
+        model_ready = True
+        logging.info("Backend is ready for identification.")
     except Exception as e:
-        logging.error(f"Failed to load models: {e}")
+        logging.error(f"Failed to load models during startup: {e}")
+        # We do not exit here so the /health endpoint can report the failure to the load balancer
+        model_ready = False
 
 class IdentifyRequest(BaseModel):
     image_base64: str
 
 @app.post("/identify")
 async def identify(request: IdentifyRequest):
-    if not db or not identifier:
-         raise HTTPException(status_code=503, detail="Model not loaded")
+    if not model_ready or not matcher:
+         raise HTTPException(
+             status_code=503,
+             detail="Model is still loading or failed to load. Please check server logs."
+         )
 
     try:
-        # Decode base64 image
+        # Decode base64 image and convert to PIL Image
         image_data = base64.b64decode(request.image_base64)
+        image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        # Run inference
-        result = identifier.identify(image_data)
+        # Rank the image using BioClipMatcher
+        # This returns a list of core.photo_match.RankedMatch
+        ranked_matches = matcher.rank(image, crop=False)
 
-        if not result.candidates:
+        if not ranked_matches:
              return {
                  "status": "success",
-                 "tier": result.tier.name,
-                 "species_id": None,
-                 "confidence": 0.0,
-                 "message": "No species identified or out of distribution."
+                 "matches": [],
+                 "message": "No matches found."
              }
 
-        top_match = result.candidates[0]
-        species_info = db.get(top_match.species_id)
+        # Format the top 3 matches
+        top_matches = []
+        for match in ranked_matches[:3]:
+            top_matches.append({
+                "species_id": match.species_id,
+                "scientific_name": match.scientific_name,
+                "common_name": match.common_en,
+                "score": float(match.score)
+            })
 
         return {
              "status": "success",
-             "tier": result.tier.name,
-             "species_id": top_match.species_id,
-             "scientific_name": species_info.scientific_name if species_info else "Unknown",
-             "common_name": species_info.common_name if species_info else "Unknown",
-             "confidence": top_match.probability
+             "matches": top_matches
         }
 
     except Exception as e:
@@ -112,4 +101,7 @@ async def identify(request: IdentifyRequest):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    if model_ready:
+        return {"status": "ok", "message": "BioCLIP matcher loaded and ready."}
+    else:
+        raise HTTPException(status_code=503, detail="Model not ready.")

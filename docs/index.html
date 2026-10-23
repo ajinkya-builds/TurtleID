@@ -81,6 +81,25 @@
             display: none;
             text-align: left;
         }
+        .match-row {
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #cce5ff;
+        }
+        .match-row:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .error-message {
+            background-color: #fce4e4;
+            color: #cc0033;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -100,8 +119,13 @@
         <div id="status"></div>
 
         <div id="result">
-            <strong>Identification Result:</strong><br>
-            <span id="species-name">Loading...</span>
+            <strong>Top Matches:</strong><br>
+            <div id="species-matches">Loading...</div>
+        </div>
+
+        <div id="error-box" class="error-message">
+            <strong>Error:</strong><br>
+            <span id="error-text"></span>
         </div>
     </div>
 
@@ -111,12 +135,16 @@
         const preview = document.getElementById('preview');
         const status = document.getElementById('status');
         const result = document.getElementById('result');
-        const speciesName = document.getElementById('species-name');
+        const errorBox = document.getElementById('error-box');
+        const errorText = document.getElementById('error-text');
+        const speciesMatches = document.getElementById('species-matches');
 
         // REPLACE THIS URL with your deployed Google Apps Script URL
+        // Example: 'https://script.google.com/macros/s/AKfycb.../exec'
         const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
 
-        // REPLACE THIS URL with your deployed Python API URL (e.g. Render, Heroku)
+        // REPLACE THIS URL with your deployed Python API URL
+        // Example: 'https://chelonid-api-xyz.onrender.com/identify'
         const PYTHON_API_URL = 'YOUR_PYTHON_API_URL_HERE/identify';
 
         function handleImage(e) {
@@ -139,6 +167,7 @@
         async function uploadAndIdentify(base64Data, filename, mimeType) {
             status.textContent = "Processing...";
             result.style.display = 'none';
+            errorBox.style.display = 'none';
 
             const base64String = base64Data.split(',')[1];
 
@@ -156,10 +185,10 @@
             }
 
             // 2. Send to Python API for Identification
-            if (PYTHON_API_URL === 'YOUR_PYTHON_API_URL_HERE/identify') {
+            if (PYTHON_API_URL.includes('YOUR_PYTHON_API_URL_HERE')) {
                  status.textContent = "Please configure your API endpoints.";
-                 result.style.display = 'block';
-                 speciesName.innerHTML = "<small>You must deploy `api.py` and set `PYTHON_API_URL` to see real results.</small>";
+                 errorBox.style.display = 'block';
+                 errorText.innerHTML = "You must deploy <code>api.py</code> and set <code>PYTHON_API_URL</code> in <code>docs/index.html</code> to see real results.";
                  return;
             }
 
@@ -171,19 +200,37 @@
                     body: JSON.stringify({ image_base64: base64String })
                 });
 
-                if (!response.ok) throw new Error("API Response Error");
+                if (!response.ok) {
+                    if (response.status === 503) {
+                        throw new Error("Model is still loading. Please wait a moment and try again.");
+                    }
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
 
                 const data = await response.json();
                 status.textContent = "";
-                result.style.display = 'block';
 
-                if (data.status === 'success' && data.species_id) {
-                    speciesName.innerHTML = `<em>${data.scientific_name}</em> (${data.common_name})<br>Confidence: ${(data.confidence * 100).toFixed(1)}%<br>Tier: ${data.tier}`;
+                if (data.status === 'success' && data.matches && data.matches.length > 0) {
+                    result.style.display = 'block';
+                    let html = '';
+                    data.matches.forEach((match, index) => {
+                        html += `
+                            <div class="match-row">
+                                <strong>#${index + 1}:</strong> <em>${match.scientific_name}</em><br>
+                                ${match.common_name}<br>
+                                Score: ${(match.score * 100).toFixed(1)}
+                            </div>
+                        `;
+                    });
+                    speciesMatches.innerHTML = html;
                 } else {
-                    speciesName.innerHTML = `Unable to confidently identify.<br>Tier: ${data.tier || 'Unknown'}`;
+                    errorBox.style.display = 'block';
+                    errorText.innerHTML = "Unable to confidently identify matches.";
                 }
             } catch (error) {
-                status.textContent = "Identification failed. Check console.";
+                status.textContent = "";
+                errorBox.style.display = 'block';
+                errorText.textContent = error.message || "Identification failed. Ensure the API is running and reachable.";
                 console.error('Error:', error);
             }
         }
