@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chelonid-ID Mobile</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f7;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        p.subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .upload-container {
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            border-radius: 12px;
+            padding: 30px 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #007aff;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            width: 100%;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        .btn:active {
+            background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #34c759;
+        }
+        .btn-secondary:active {
+            background-color: #248a3d;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        #preview {
+            max-width: 100%;
+            max-height: 300px;
+            margin-top: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #007aff;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e5f1ff;
+            border-radius: 8px;
+            display: none;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Chelonid-ID</h1>
+    <p class="subtitle">Indian Turtle & Tortoise Identification</p>
+
+    <div class="upload-container">
+        <label for="camera-upload" class="btn">Take Photo</label>
+        <input type="file" id="camera-upload" accept="image/*" capture="environment">
+
+        <label for="gallery-upload" class="btn btn-secondary">Upload from Gallery</label>
+        <input type="file" id="gallery-upload" accept="image/*">
+
+        <img id="preview" src="#" alt="Image preview">
+
+        <div id="status"></div>
+
+        <div id="result">
+            <strong>Identification Result:</strong><br>
+            <span id="species-name">Loading...</span>
+        </div>
+    </div>
+
+    <script>
+        const cameraUpload = document.getElementById('camera-upload');
+        const galleryUpload = document.getElementById('gallery-upload');
+        const preview = document.getElementById('preview');
+        const status = document.getElementById('status');
+        const result = document.getElementById('result');
+        const speciesName = document.getElementById('species-name');
+
+        // REPLACE THIS URL with your deployed Google Apps Script URL
+        const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
+
+        // REPLACE THIS URL with your deployed Python API URL (e.g. Render, Heroku)
+        const PYTHON_API_URL = 'YOUR_PYTHON_API_URL_HERE/identify';
+
+        function handleImage(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+                uploadAndIdentify(event.target.result, file.name, file.type);
+            }
+            reader.readAsDataURL(file);
+        }
+
+        cameraUpload.addEventListener('change', handleImage);
+        galleryUpload.addEventListener('change', handleImage);
+
+        async function uploadAndIdentify(base64Data, filename, mimeType) {
+            status.textContent = "Processing...";
+            result.style.display = 'none';
+
+            const base64String = base64Data.split(',')[1];
+
+            // 1. Upload to Google Drive (Background)
+            if (GOOGLE_SCRIPT_URL !== 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
+                fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify({
+                        filename: filename,
+                        mimeType: mimeType,
+                        data: base64String
+                    })
+                }).catch(e => console.error("Google Drive Upload Failed:", e));
+            }
+
+            // 2. Send to Python API for Identification
+            if (PYTHON_API_URL === 'YOUR_PYTHON_API_URL_HERE/identify') {
+                 status.textContent = "Please configure your API endpoints.";
+                 result.style.display = 'block';
+                 speciesName.innerHTML = "<small>You must deploy `api.py` and set `PYTHON_API_URL` to see real results.</small>";
+                 return;
+            }
+
+            status.textContent = "Identifying species...";
+            try {
+                const response = await fetch(PYTHON_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image_base64: base64String })
+                });
+
+                if (!response.ok) throw new Error("API Response Error");
+
+                const data = await response.json();
+                status.textContent = "";
+                result.style.display = 'block';
+
+                if (data.status === 'success' && data.species_id) {
+                    speciesName.innerHTML = `<em>${data.scientific_name}</em> (${data.common_name})<br>Confidence: ${(data.confidence * 100).toFixed(1)}%<br>Tier: ${data.tier}`;
+                } else {
+                    speciesName.innerHTML = `Unable to confidently identify.<br>Tier: ${data.tier || 'Unknown'}`;
+                }
+            } catch (error) {
+                status.textContent = "Identification failed. Check console.";
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
