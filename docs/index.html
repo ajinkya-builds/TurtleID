@@ -143,9 +143,10 @@
         // Example: 'https://script.google.com/macros/s/AKfycb.../exec'
         const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
 
-        // REPLACE THIS URL with your deployed Python API URL
-        // Example: 'https://chelonid-api-xyz.onrender.com/identify'
-        const PYTHON_API_URL = 'https://turtleid-api-wgbusgxhnq-el.a.run.app/identify';
+        // Cloud Run API (Turtle ID billing project)
+        const API_BASE = 'https://turtleid-api-wgbusgxhnq-el.a.run.app';
+        const PYTHON_API_URL = API_BASE + '/identify';
+        const WARMUP_URL = API_BASE + '/warmup';
 
         function handleImage(e) {
             const file = e.target.files[0];
@@ -192,8 +193,15 @@
                  return;
             }
 
-            status.textContent = "Identifying species...";
             try {
+                // Wake BioCLIP first (cold start can take several minutes).
+                status.textContent = "Waking AI model (first time can take 5–10 minutes)...";
+                const warm = await fetch(WARMUP_URL, { method: 'GET' });
+                if (!warm.ok) {
+                    throw new Error(`Warmup failed: ${warm.status}. Check Cloud Run / spend cap.`);
+                }
+
+                status.textContent = "Identifying species...";
                 const response = await fetch(PYTHON_API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -201,8 +209,9 @@
                 });
 
                 if (!response.ok) {
+                    const detail = await response.text();
                     if (response.status === 503) {
-                        throw new Error("Model is still loading. Please wait a moment and try again.");
+                        throw new Error("Service unavailable (503). Often a cold start, out of memory, or spend cap. Wait 1 minute and try again. " + detail.slice(0, 120));
                     }
                     throw new Error(`API Error: ${response.status} ${response.statusText}`);
                 }
