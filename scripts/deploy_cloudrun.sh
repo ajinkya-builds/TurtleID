@@ -21,6 +21,8 @@ gcloud services enable \
   cloudbuild.googleapis.com
 
 # Deploy from source (Dockerfile in repo root). First build can take 15–30+ minutes.
+# --no-cpu-throttling: keep CPU while the instance is up so model load /inference
+# is not starved between short health checks. Still scales to zero when idle.
 gcloud run deploy "$SERVICE" \
   --source . \
   --region "$REGION" \
@@ -28,11 +30,12 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --memory 2Gi \
   --cpu 1 \
-  --timeout 300 \
+  --timeout 900 \
   --concurrency 1 \
   --min-instances 0 \
   --max-instances 1 \
   --cpu-boost \
+  --no-cpu-throttling \
   --set-env-vars "HF_HOME=/app/models/hf_cache,HUGGINGFACE_HUB_CACHE=/app/models/hf_cache/hub"
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"

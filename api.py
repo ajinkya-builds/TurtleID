@@ -34,10 +34,10 @@ db = None
 matcher = None
 model_ready = False
 model_error = None
+_load_lock = threading.Lock()
 
 
 def _load_models() -> None:
-    """Load BioCLIP off the request path so Cloud Run can bind $PORT quickly."""
     global db, matcher, model_ready, model_error
     try:
         if not os.path.exists("reference_images"):
@@ -59,13 +59,30 @@ def _load_models() -> None:
         logging.error("Failed to load models: %s", e)
         model_ready = False
         model_error = str(e)
+        raise
+
+
+def ensure_model() -> None:
+    """Load BioCLIP while Cloud Run is allocating CPU for this request.
+
+    With default CPU throttling, a background startup thread is starved between
+    short /health probes, so the model never finishes downloading.
+    """
+    if model_ready:
+        return
+    if model_error and not model_ready:
+        # Allow one retry after a previous failure.
+        pass
+    with _load_lock:
+        if model_ready:
+            return
+        _load_models()
 
 
 @app.on_event("startup")
 async def startup_event():
     logging.basicConfig(level=logging.INFO)
-    # Non-blocking: Cloud Run health checks need the port open before BioCLIP loads.
-    threading.Thread(target=_load_models, name="bioclip-loader", daemon=True).start()
+    logging.info("API process started; BioCLIP loads on first /identify or /warmup.")
 
 
 class IdentifyRequest(BaseModel):
@@ -74,16 +91,13 @@ class IdentifyRequest(BaseModel):
 
 @app.post("/identify")
 async def identify(request: IdentifyRequest):
-    if model_error and not model_ready:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Model failed to load: {model_error}",
-        )
+    try:
+        ensure_model()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Model failed to load: {e}") from e
+
     if not model_ready or not matcher:
-        raise HTTPException(
-            status_code=503,
-            detail="Model is still loading. Retry in a minute (first cold start downloads BioCLIP).",
-        )
+        raise HTTPException(status_code=503, detail="Model is not ready.")
 
     try:
         image_data = base64.b64decode(request.image_base64)
@@ -119,11 +133,25 @@ async def identify(request: IdentifyRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/warmup")
+@app.get("/warmup")
+def warmup():
+    """Trigger model download while CPU is allocated to this request."""
+    try:
+        ensure_model()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Model failed to load: {e}") from e
+    return {"status": "ok", "ready": True, "message": "BioCLIP matcher loaded and ready."}
+
+
 @app.get("/health")
 def health_check():
-    # Always 200 once the process is up so Cloud Run startup probes succeed.
     if model_ready:
         return {"status": "ok", "ready": True, "message": "BioCLIP matcher loaded and ready."}
     if model_error:
         return {"status": "error", "ready": False, "message": model_error}
-    return {"status": "loading", "ready": False, "message": "BioCLIP matcher is still loading."}
+    return {
+        "status": "cold",
+        "ready": False,
+        "message": "Call GET/POST /warmup once (may take several minutes) to load BioCLIP.",
+    }
