@@ -1,0 +1,22 @@
+---
+description: Prefer Google Jules for TurtleID development / PR-shaped build work
+alwaysApply: true
+---
+
+# Offload development to Google Jules
+
+Ajinkya has Jules credits and wants to **save Cursor credits**.
+
+**Hand to Jules (default for build work):**
+- App scaffolding, UI, GitHub Pages / static frontends
+- Productionization PRs, refactors Jules already started
+- Feature wiring that can be specified as a clear PR task
+- Follow-ups on Jules PRs (implement review feedback via Jules when practical)
+
+**Keep in Cursor:**
+- Reviewing Jules PRs and deciding merge/stand-up
+- Architecture / accuracy / model-stack judgment
+- Work that needs the Wednesday volume (field photos, `models/hf_cache/`, local BioCLIP runs)
+- Anything Gemini/Jules cannot access on that volume
+
+When the user asks to build something development-shaped, prefer drafting a precise Jules task / using the existing Jules PR over re-implementing the whole thing here.
