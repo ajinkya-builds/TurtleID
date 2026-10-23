@@ -15,21 +15,23 @@ echo "Region:   $REGION"
 echo "Service:  $SERVICE"
 
 gcloud config set project "$PROJECT_ID"
+
+# Soft-fail: rate limits on serviceusage should not block redeploys.
 gcloud services enable \
   run.googleapis.com \
   artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
+  cloudbuild.googleapis.com \
+  || echo "API enable skipped/rate-limited; continuing..."
 
-# Deploy from source (Dockerfile in repo root). First build can take 15–30+ minutes.
-# --no-cpu-throttling: keep CPU while the instance is up so model load /inference
-# is not starved between short health checks. Still scales to zero when idle.
+# Cloud Run: memory above 4Gi requires at least 2 CPU.
+# --no-cpu-throttling keeps CPU while the instance is up (still scales to zero).
 gcloud run deploy "$SERVICE" \
   --source . \
   --region "$REGION" \
   --platform managed \
   --allow-unauthenticated \
   --memory 8Gi \
-  --cpu 1 \
+  --cpu 2 \
   --timeout 900 \
   --concurrency 1 \
   --min-instances 0 \
