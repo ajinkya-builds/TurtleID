@@ -21,6 +21,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://ajinkya-builds.github.io",
+        "https://ajinkya-patil60.github.io",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ],
