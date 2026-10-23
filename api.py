@@ -1,3 +1,4 @@
+import os
 import io
 import json
 import logging
@@ -39,6 +40,11 @@ async def startup_event():
     global db, matcher, model_ready
     logging.basicConfig(level=logging.INFO)
     try:
+        if not os.path.exists("reference_images"):
+            raise RuntimeError("Missing reference_images/ directory.")
+        if not os.path.exists("data/species_db.json"):
+            raise RuntimeError("Missing data/species_db.json file.")
+
         logging.info("Loading Species Database...")
         db = SpeciesDB.load()
 
