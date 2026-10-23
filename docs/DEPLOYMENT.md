@@ -82,3 +82,10 @@ Once your API is live (e.g., `https://chelonid-api-xyz.onrender.com`):
    const PYTHON_API_URL = 'https://chelonid-api-xyz.onrender.com/identify';
    ```
 4. Commit and push the changes to GitHub. Your mobile app will now perform real species identification!
+
+## Go live checklist
+1. Merge this PR
+2. Create Render Web Service from `render.yaml` / the documented build+start commands
+3. Wait for `/health` → `{"status":"ok",...}`
+4. Paste URL into `docs/index.html` and push
+5. (Optional) Deploy `docs/google_drive_backend.js` as Apps Script → paste script URL

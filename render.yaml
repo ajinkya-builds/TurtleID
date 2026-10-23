@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: turtleid-mobile-api
+    env: python
+    repo: https://github.com/ajinkya-builds/TurtleID
+    branch: main
+    # Note: Requires >= 2-4 GB RAM (Render Pro plan or above is recommended)
+    # BioCLIP foundation models will cause Out of Memory errors on the free tier.
+    # The Free tier ephemeral disk will also cause 1+ GB model downloads on every cold start.
+    buildOption: pip
+    buildCommand: "pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu && pip install -r requirements-matcher.txt && pip install -r requirements-api.txt"
+    startCommand: "uvicorn api:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: HF_HOME
+        value: ./models/hf_cache
+      - key: HUGGINGFACE_HUB_CACHE
+        value: ./models/hf_cache/hub
