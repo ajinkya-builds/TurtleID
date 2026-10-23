@@ -1,13 +1,12 @@
 import os
 import io
-import json
 import logging
 import base64
+import threading
 from PIL import Image
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 
 # Setup basic configuration and models
 import config
@@ -23,7 +22,7 @@ app.add_middleware(
     allow_origins=[
         "https://ajinkya-builds.github.io",
         "http://localhost:8000",
-        "http://127.0.0.1:8000"
+        "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -34,11 +33,12 @@ app.add_middleware(
 db = None
 matcher = None
 model_ready = False
+model_error = None
 
-@app.on_event("startup")
-async def startup_event():
-    global db, matcher, model_ready
-    logging.basicConfig(level=logging.INFO)
+
+def _load_models() -> None:
+    """Load BioCLIP off the request path so Cloud Run can bind $PORT quickly."""
+    global db, matcher, model_ready, model_error
     try:
         if not os.path.exists("reference_images"):
             raise RuntimeError("Missing reference_images/ directory.")
@@ -49,65 +49,81 @@ async def startup_event():
         db = SpeciesDB.load()
 
         logging.info("Loading BioClipMatcher (foundation models)...")
-        # This will trigger HF weight downloads to models/hf_cache on first boot
+        # Downloads weights into HF_HOME / models/hf_cache on first boot.
         matcher = BioClipMatcher(db=db)
 
         model_ready = True
+        model_error = None
         logging.info("Backend is ready for identification.")
     except Exception as e:
-        logging.error(f"Failed to load models during startup: {e}")
-        # We do not exit here so the /health endpoint can report the failure to the load balancer
+        logging.error("Failed to load models: %s", e)
         model_ready = False
+        model_error = str(e)
+
+
+@app.on_event("startup")
+async def startup_event():
+    logging.basicConfig(level=logging.INFO)
+    # Non-blocking: Cloud Run health checks need the port open before BioCLIP loads.
+    threading.Thread(target=_load_models, name="bioclip-loader", daemon=True).start()
+
 
 class IdentifyRequest(BaseModel):
     image_base64: str
 
+
 @app.post("/identify")
 async def identify(request: IdentifyRequest):
+    if model_error and not model_ready:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model failed to load: {model_error}",
+        )
     if not model_ready or not matcher:
-         raise HTTPException(
-             status_code=503,
-             detail="Model is still loading or failed to load. Please check server logs."
-         )
+        raise HTTPException(
+            status_code=503,
+            detail="Model is still loading. Retry in a minute (first cold start downloads BioCLIP).",
+        )
 
     try:
-        # Decode base64 image and convert to PIL Image
         image_data = base64.b64decode(request.image_base64)
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        # Rank the image using BioClipMatcher
-        # This returns a list of core.photo_match.RankedMatch
         ranked_matches = matcher.rank(image, crop=False)
 
         if not ranked_matches:
-             return {
-                 "status": "success",
-                 "matches": [],
-                 "message": "No matches found."
-             }
+            return {
+                "status": "success",
+                "matches": [],
+                "message": "No matches found.",
+            }
 
-        # Format the top 3 matches
         top_matches = []
         for match in ranked_matches[:3]:
-            top_matches.append({
-                "species_id": match.species_id,
-                "scientific_name": match.scientific_name,
-                "common_name": match.common_en,
-                "score": float(match.score)
-            })
+            top_matches.append(
+                {
+                    "species_id": match.species_id,
+                    "scientific_name": match.scientific_name,
+                    "common_name": match.common_en,
+                    "score": float(match.score),
+                }
+            )
 
         return {
-             "status": "success",
-             "matches": top_matches
+            "status": "success",
+            "matches": top_matches,
         }
 
     except Exception as e:
-         logging.error(f"Error during identification: {e}")
-         raise HTTPException(status_code=500, detail=str(e))
+        logging.error("Error during identification: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/health")
 def health_check():
+    # Always 200 once the process is up so Cloud Run startup probes succeed.
     if model_ready:
-        return {"status": "ok", "message": "BioCLIP matcher loaded and ready."}
-    else:
-        raise HTTPException(status_code=503, detail="Model not ready.")
+        return {"status": "ok", "ready": True, "message": "BioCLIP matcher loaded and ready."}
+    if model_error:
+        return {"status": "error", "ready": False, "message": model_error}
+    return {"status": "loading", "ready": False, "message": "BioCLIP matcher is still loading."}
