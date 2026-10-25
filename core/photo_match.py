@@ -106,9 +106,13 @@ class BioClipMatcher:
                 "Install it with: python -m pip install -r requirements-matcher.txt"
             ) from exc
 
+        import os
+        raw_dtype = os.environ.get("TURTLEID_DTYPE", "bf16").strip().lower()
+        dtype = torch.bfloat16 if raw_dtype in ("bf16", "bfloat16") else torch.float32
+
         try:
-            model, _train, preprocess = open_clip.create_model_and_transforms(
-                self.model_id
+            model, preprocess = _load_openclip_model_streaming(
+                self.model_id, device=self.device_name, dtype=dtype
             )
             tokenizer = open_clip.get_tokenizer(self.model_id)
         except Exception as exc:
@@ -118,10 +122,11 @@ class BioClipMatcher:
             ) from exc
 
         self.torch = torch
-        self.model = model.to(self.device_name).float().eval()
+        self.dtype = dtype
+        self.model = model.eval()
         self.preprocess = preprocess
         self.tokenizer = tokenizer
-        logger.info("Loaded %s on %s", self.model_id, self.device_name)
+        logger.info("Loaded %s on %s (dtype=%s)", self.model_id, self.device_name, dtype)
 
     def rank(
         self,
@@ -189,7 +194,7 @@ class BioClipMatcher:
         for start in range(0, len(images), batch_size):
             batch = images[start:start + batch_size]
             tensor = self.torch.stack([self.preprocess(image) for image in batch])
-            tensor = tensor.to(self.device_name)
+            tensor = tensor.to(device=self.device_name, dtype=getattr(self, "dtype", self.torch.float32))
             with self.torch.no_grad():
                 forward = self.model.encode_image(tensor)
                 mirrored = self.model.encode_image(self.torch.flip(tensor, dims=[3]))
@@ -246,3 +251,73 @@ class BioClipMatcher:
         with self.torch.no_grad():
             features = self.model.encode_text(tokens)
         return _normalise(features.float().cpu().numpy().astype(np.float32))
+
+
+def _load_openclip_model_streaming(model_id: str, *, device: str, dtype, visual_only: bool = False):
+    """Load an hf-hub OpenCLIP checkpoint via safetensors mmap without duplicating 3.8 GB in RAM."""
+    import json
+    import open_clip
+    import torch
+    from huggingface_hub import hf_hub_download
+    from open_clip.transform import PreprocessCfg, image_transform_v2
+    from safetensors import safe_open
+
+    if model_id.startswith("hf-hub:"):
+        repo_id = model_id.split("hf-hub:", 1)[1]
+        try:
+            cfg_path = hf_hub_download(repo_id, "open_clip_config.json")
+            st_path = hf_hub_download(repo_id, "open_clip_model.safetensors")
+            cfg = json.loads(Path(cfg_path).read_text(encoding="utf-8"))
+            preprocess = image_transform_v2(
+                PreprocessCfg(**cfg.get("preprocess_cfg", {})), is_train=False
+            )
+            with torch.device("meta"):
+                model = open_clip.model.CLIP(**cfg["model_cfg"])
+            ctx_len = cfg["model_cfg"].get("text_cfg", {}).get("context_length", 77)
+            if visual_only:
+                target = model.visual
+                del model
+            else:
+                target = model
+            prefix = "visual." if visual_only else ""
+            with safe_open(st_path, framework="pt", device="cpu") as f:
+                keys = set(f.keys())
+                for name, module in target.named_modules():
+                    for p_name, param in list(module._parameters.items()):
+                        if param is None:
+                            continue
+                        rel = f"{name}.{p_name}" if name else p_name
+                        full = f"{prefix}{rel}"
+                        if full in keys:
+                            t = f.get_tensor(full)
+                            if t.is_floating_point():
+                                t = t.to(dtype=dtype)
+                            module._parameters[p_name] = torch.nn.Parameter(
+                                t.to(device=device), requires_grad=False
+                            )
+                    for b_name, buf in list(module._buffers.items()):
+                        if buf is None:
+                            continue
+                        rel = f"{name}.{b_name}" if name else b_name
+                        full = f"{prefix}{rel}"
+                        if full in keys:
+                            t = f.get_tensor(full)
+                            if t.is_floating_point():
+                                t = t.to(dtype=dtype)
+                            module._buffers[b_name] = t.to(device=device)
+                        elif b_name == "attn_mask":
+                            mask = torch.triu(
+                                torch.full((ctx_len, ctx_len), float("-inf"), dtype=dtype, device=device),
+                                diagonal=1,
+                            )
+                            module._buffers[b_name] = mask
+            return target.eval(), preprocess
+        except Exception as exc:
+            logger.warning("Streaming safetensors load fallback for %s (%s)", model_id, exc)
+
+    model, _train, preprocess = open_clip.create_model_and_transforms(model_id)
+    if visual_only:
+        visual = model.visual
+        del model
+        return visual.to(device=device, dtype=dtype).eval(), preprocess
+    return model.to(device=device, dtype=dtype).eval(), preprocess

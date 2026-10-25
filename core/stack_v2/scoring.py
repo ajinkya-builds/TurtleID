@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
 
 
 def l2_normalise(matrix: np.ndarray) -> np.ndarray:
@@ -106,6 +104,9 @@ def loo_logistic_probs(
     exclude_index: int,
 ) -> np.ndarray:
     """LOO logistic regression probabilities over class_names for one query index."""
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import LabelEncoder
+
     probs = np.zeros(len(class_names), dtype=np.float64)
     mask = np.ones(len(labels), dtype=bool)
     mask[exclude_index] = False
@@ -139,7 +140,7 @@ def kmeans_prototypes(
     k_max: int = 5,
 ) -> tuple[np.ndarray, list[str]]:
     """Per-class k-means sub-prototypes (view/age clusters)."""
-    from sklearn.cluster import KMeans
+    from sklearn.cluster import KMeans  # local import: query runtime does not fit clusters
 
     proto_vecs: list[np.ndarray] = []
     proto_labels: list[str] = []

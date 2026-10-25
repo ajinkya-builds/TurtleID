@@ -10,6 +10,7 @@ Working notes from building and evaluating the offline photo identification stac
 | [feature-rule-engine.md](feature-rule-engine.md) | Top-3 → species feature checklist → human confirm (Prashant’s next step) |
 | [model-cache.md](model-cache.md) | Why Hugging Face weights must live on the Wednesday volume |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Jules mobile UI: GitHub Pages + Drive Apps Script + FastAPI backend |
+| [free-hosting-stack-v2.md](free-hosting-stack-v2.md) | Stack v2 bundle, Cloud Run, Modal T4, and the Pages checklist |
 | **Live mobile shell** | [GitHub Pages](https://ajinkya-builds.github.io/TurtleID/) (`docs/index.html`) — camera/upload UI; ID needs API URLs |
 
 ### Development process

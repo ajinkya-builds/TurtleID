@@ -3,37 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0b6b32">
+    <link rel="manifest" href="./manifest.json">
     <title>Chelonid-ID Mobile</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js" crossorigin="anonymous"></script>
+    <script src="./stack_v2_client.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 20px;
+            padding: 16px;
             background-color: #f5f5f7;
-            color: #333;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            color: #1d1d1f;
         }
-        h1 {
-            font-size: 24px;
-            text-align: center;
-            margin-bottom: 5px;
-        }
-        p.subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
+        h1 { font-size: 24px; text-align: center; margin: 8px 0 4px; }
+        p.subtitle { text-align: center; color: #666; margin: 0 0 6px; font-size: 14px; }
+        p.api-line { text-align: center; color: #0b6b32; font-size: 12px; font-weight: 600; margin: 0 0 16px; word-break: break-all; }
         .upload-container {
             width: 100%;
-            max-width: 400px;
+            max-width: 440px;
+            margin: 0 auto;
             background: white;
             border-radius: 12px;
-            padding: 30px 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            text-align: center;
+            padding: 22px 16px 18px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+        }
+        label.field { display: block; text-align: left; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+        select {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #d0d0d5;
+            margin-bottom: 14px;
+            background: #fff;
         }
         .btn {
             display: inline-block;
@@ -47,67 +51,137 @@
             border: none;
             width: 100%;
             box-sizing: border-box;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
+            text-align: center;
         }
-        .btn:active {
-            background-color: #0056b3;
-        }
-        .btn-secondary {
-            background-color: #34c759;
-        }
-        .btn-secondary:active {
-            background-color: #248a3d;
-        }
-        input[type="file"] {
-            display: none;
-        }
+        .btn:active { background-color: #0056b3; }
+        .btn-secondary { background-color: #34c759; }
+        .btn-secondary:active { background-color: #248a3d; }
+        input[type="file"] { display: none; }
         #preview {
             max-width: 100%;
-            max-height: 300px;
-            margin-top: 20px;
+            max-height: 280px;
+            margin-top: 8px;
             border-radius: 8px;
             display: none;
         }
-        #status {
-            margin-top: 20px;
-            font-weight: bold;
-            color: #007aff;
+        #status { margin-top: 14px; font-weight: 600; color: #007aff; min-height: 1.2em; }
+        #result { margin-top: 14px; display: none; text-align: left; }
+        .badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .badge {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
         }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #e5f1ff;
-            border-radius: 8px;
-            display: none;
-            text-align: left;
-        }
+        .tier-CONFIRMED { background: #d8f5e4; color: #0b6b32; }
+        .tier-PROBABLE { background: #d6e8ff; color: #084a9c; }
+        .tier-TENTATIVE { background: #fff1cc; color: #8a5a00; }
+        .tier-INDETERMINATE { background: #ececf0; color: #444; }
+        .tier-REJECTED { background: #fde2e1; color: #9d1c1c; }
+        .wpa-I { background: #fde2e1; color: #9d1c1c; }
+        .wpa-II { background: #fff1cc; color: #8a5a00; }
+        .wpa-other { background: #ececf0; color: #333; }
+        .engine-pill { background: #eef2f5; color: #333; }
         .match-row {
             margin-bottom: 10px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #cce5ff;
+            padding: 10px;
+            border-radius: 8px;
+            background: #f4f8ff;
+            border: 2px solid transparent;
         }
-        .match-row:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
+        .match-row.dimmed { opacity: 0.38; }
+        .match-row.supported { border-color: #34c759; background: #f1fff4; }
+        .match-row img.plate {
+            width: 100%;
+            max-height: 160px;
+            object-fit: contain;
+            background: #fff;
+            border-radius: 6px;
+            margin-top: 8px;
         }
+        .meta { color: #444; font-size: 13px; margin-top: 4px; }
+        .callout {
+            background: #fff8e8;
+            border-left: 4px solid #e0a100;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .warnings { margin: 10px 0; padding-left: 18px; color: #7a2e0e; font-size: 14px; }
+        .questions { margin-top: 8px; }
+        .question { margin-bottom: 12px; }
+        .question p { margin: 0 0 6px; font-weight: 600; font-size: 14px; }
+        .option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            margin-bottom: 6px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid #c9c9cf;
+            background: #fff;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .option.selected { border-color: #007aff; background: #e8f2ff; font-weight: 600; }
         .error-message {
             background-color: #fce4e4;
             color: #cc0033;
-            padding: 15px;
+            padding: 12px;
             border-radius: 8px;
-            margin-top: 20px;
+            margin-top: 14px;
             display: none;
             text-align: left;
         }
+        .fine { font-size: 12px; color: #666; }
     </style>
 </head>
 <body>
 
     <h1>Chelonid-ID</h1>
-    <p class="subtitle">Indian Turtle & Tortoise Identification</p>
+    <p class="subtitle">Indian turtle &amp; tortoise identification</p>
+    <p class="api-line" id="api-line"></p>
 
     <div class="upload-container">
+        <label class="field" for="state-select">State / UT</label>
+        <select id="state-select">
+            <option value="" selected>All India / Unknown (Trade / Seizure)</option>
+            <option>Andaman &amp; Nicobar Islands</option>
+            <option>Andhra Pradesh</option>
+            <option>Arunachal Pradesh</option>
+            <option>Assam</option>
+            <option>Bihar</option>
+            <option>Chhattisgarh</option>
+            <option>Delhi</option>
+            <option>Goa</option>
+            <option>Gujarat</option>
+            <option>Haryana</option>
+            <option>Himachal Pradesh</option>
+            <option>Jharkhand</option>
+            <option>Karnataka</option>
+            <option>Kerala</option>
+            <option>Madhya Pradesh</option>
+            <option>Maharashtra</option>
+            <option>Manipur</option>
+            <option>Meghalaya</option>
+            <option>Mizoram</option>
+            <option>Nagaland</option>
+            <option>Odisha</option>
+            <option>Punjab</option>
+            <option>Rajasthan</option>
+            <option>Sikkim</option>
+            <option>Tamil Nadu</option>
+            <option>Telangana</option>
+            <option>Tripura</option>
+            <option>Uttar Pradesh</option>
+            <option>Uttarakhand</option>
+            <option>West Bengal</option>
+        </select>
+
         <label for="camera-upload" class="btn">Take Photo</label>
         <input type="file" id="camera-upload" accept="image/*" capture="environment">
 
@@ -115,14 +189,8 @@
         <input type="file" id="gallery-upload" accept="image/*">
 
         <img id="preview" src="#" alt="Image preview">
-
         <div id="status"></div>
-
-        <div id="result">
-            <strong>Top Matches:</strong><br>
-            <div id="species-matches">Loading...</div>
-        </div>
-
+        <div id="result"></div>
         <div id="error-box" class="error-message">
             <strong>Error:</strong><br>
             <span id="error-text"></span>
@@ -130,6 +198,12 @@
     </div>
 
     <script>
+        const BROWSER_MODE = 'browser';
+        const HF_ONNX_REPO = 'ajinkyapatil60/turtleid-student-onnx';
+        const HF_ONNX_URL = 'https://huggingface.co/' + HF_ONNX_REPO + '/resolve/main/turtleid_student_int8.onnx';
+        const STORAGE_KEY = 'turtleid_api_base';
+        const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
+
         const cameraUpload = document.getElementById('camera-upload');
         const galleryUpload = document.getElementById('gallery-upload');
         const preview = document.getElementById('preview');
@@ -137,110 +211,319 @@
         const result = document.getElementById('result');
         const errorBox = document.getElementById('error-box');
         const errorText = document.getElementById('error-text');
-        const speciesMatches = document.getElementById('species-matches');
+        const apiLine = document.getElementById('api-line');
 
-        // REPLACE THIS URL with your deployed Google Apps Script URL
-        // Example: 'https://script.google.com/macros/s/AKfycb.../exec'
-        const GOOGLE_SCRIPT_URL = 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE';
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(function () {});
+        }
 
-        // Cloud Run API (Turtle ID billing project)
-        const API_BASE = 'https://turtleid-api-wgbusgxhnq-el.a.run.app';
-        const PYTHON_API_URL = API_BASE + '/identify';
-        const WARMUP_URL = API_BASE + '/warmup';
+        function cleanBase(url) {
+            return String(url || '').trim().replace(/\/$/, '');
+        }
 
+        function configuredBase() {
+            const fromQuery = new URLSearchParams(location.search).get('api');
+            if (fromQuery) {
+                const cleaned = cleanBase(fromQuery);
+                if (cleaned.toLowerCase() === 'browser' || cleaned.toLowerCase() === 'local') {
+                    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+                    return BROWSER_MODE;
+                }
+                try { localStorage.setItem(STORAGE_KEY, cleaned); } catch (e) {}
+                return cleaned;
+            }
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                // Clear stale Hugging Face Space or paid Cloud Run URLs saved in localStorage
+                // so default usage is always 100% free in-browser ONNX inference ($0).
+                if (stored && (/hf\.space/i.test(stored) || /a\.run\.app/i.test(stored))) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    return BROWSER_MODE;
+                }
+                if (stored) return cleanBase(stored);
+            } catch (e) {}
+            return BROWSER_MODE;
+        }
+
+        let apiBase = configuredBase();
+        function updateModeLine() {
+            if (apiBase === BROWSER_MODE) {
+                apiLine.textContent = 'Engine: In-Browser Stack v2 + MorphKey ($0 Free · ' + HF_ONNX_REPO + ')';
+            } else {
+                apiLine.textContent = 'API: ' + apiBase;
+            }
+        }
+        updateModeLine();
+
+        function esc(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
+
+        let lastDataUrl = null;
         function handleImage(e) {
             const file = e.target.files[0];
             if (!file) return;
-
-            // Show preview
             const reader = new FileReader();
-            reader.onload = function(event) {
+            reader.onload = function (event) {
+                lastDataUrl = event.target.result;
                 preview.src = event.target.result;
                 preview.style.display = 'block';
                 uploadAndIdentify(event.target.result, file.name, file.type);
-            }
+            };
             reader.readAsDataURL(file);
         }
 
         cameraUpload.addEventListener('change', handleImage);
         galleryUpload.addEventListener('change', handleImage);
+        document.getElementById('state-select').addEventListener('change', function () {
+            if (lastDataUrl) {
+                uploadAndIdentify(lastDataUrl, 'recheck.jpg', 'image/jpeg');
+            }
+        });
+
+        async function postJson(base, path, payload) {
+            const response = await fetch(base + path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const detail = await response.text();
+                const error = new Error('API ' + response.status + ': ' + detail.slice(0, 180));
+                error.status = response.status;
+                throw error;
+            }
+            return response.json();
+        }
+
+        async function wake(base) {
+            const response = await fetch(base + '/warmup', { method: 'GET' });
+            if (!response.ok) {
+                const detail = await response.text();
+                const error = new Error('Warmup ' + response.status + ': ' + detail.slice(0, 160));
+                error.status = response.status;
+                throw error;
+            }
+        }
+
+        async function identify(payload, dataUrl) {
+            const primary = configuredBase();
+            if (primary === BROWSER_MODE) {
+                if (!window.TurtleIDBrowser) {
+                    throw new Error('Browser Stack v2 client module failed to load.');
+                }
+                return window.TurtleIDBrowser.identifyInBrowser({
+                    imageDataUrl: dataUrl,
+                    state: payload.state || '',
+                    onnxUrls: [HF_ONNX_URL, './models/turtleid_student_int8.onnx'],
+                    bundleUrls: ['./data/stack_v2_browser_bundle.json'],
+                    onStatus: function (msg) { status.textContent = msg; }
+                });
+            }
+            status.textContent = 'Waking model at ' + primary.replace(/^https?:\/\//, '') + '…';
+            await wake(primary);
+            status.textContent = 'Identifying species…';
+            const data = await postJson(primary, '/identify', payload);
+            apiBase = primary;
+            return data;
+        }
+
+        function wpaClass(schedule) {
+            if (schedule === 'Schedule I') return 'wpa-I';
+            if (schedule === 'Schedule II') return 'wpa-II';
+            return 'wpa-other';
+        }
+
+        function resolvePlateUrl(refUrl) {
+            if (!refUrl) return '';
+            if (/^https?:\/\//i.test(refUrl)) return refUrl;
+            if (refUrl.charAt(0) === '/') {
+                return apiBase !== BROWSER_MODE ? (apiBase + refUrl) : ('.' + refUrl);
+            }
+            return './' + refUrl.replace(/^\.\//, '');
+        }
+
+        async function render(data) {
+            const matches = data.top_matches || data.matches || [];
+            if (data.status !== 'success' || !matches.length) {
+                errorBox.style.display = 'block';
+                errorText.textContent = data.message || 'Unable to confidently identify matches.';
+                return;
+            }
+            result.style.display = 'block';
+            let bundle = null;
+            if (window.TurtleIDBrowser) {
+                try { bundle = await window.TurtleIDBrowser.loadBrowserBundle(['./data/stack_v2_browser_bundle.json']); } catch (e) {}
+            }
+            const topIds = matches.map(function (m) { return m.species_id; });
+            const answers = {};
+
+            function speciesAllowed(speciesId) {
+                const keys = Object.keys(answers);
+                if (!keys.length) return true;
+                return keys.every(function (character) {
+                    const choice = answers[character];
+                    if (!choice) return true;
+                    const ids = choice.species_ids || [];
+                    if (ids.indexOf(speciesId) !== -1) return true;
+                    const extra = choice.uninformative_species_ids || [];
+                    return extra.indexOf(speciesId) !== -1;
+                });
+            }
+
+            function activeQuestions() {
+                if (bundle && bundle.morphkey && window.TurtleIDBrowser) {
+                    const obsMap = {};
+                    Object.keys(answers).forEach(function (ch) {
+                        obsMap[ch] = answers[ch].value;
+                    });
+                    const dynamic = window.TurtleIDBrowser.mostDiscriminating(bundle.morphkey, obsMap, topIds, 2);
+                    const answeredList = Object.keys(answers).map(function (ch) {
+                        return answers[ch]._question;
+                    }).filter(Boolean);
+                    const seen = {};
+                    const combined = [];
+                    answeredList.concat(dynamic).forEach(function (q) {
+                        if (q && !seen[q.character]) {
+                            seen[q.character] = true;
+                            combined.push(q);
+                        }
+                    });
+                    if (combined.length) return combined;
+                }
+                return data.verification_questions || [];
+            }
+
+            function html(questions) {
+                const supportedMatches = matches.filter(function (m) { return speciesAllowed(m.species_id); });
+                const top = (Object.keys(answers).length && supportedMatches.length)
+                    ? supportedMatches[0]
+                    : (data.top_match || matches[0]);
+                const effectiveTier = (Object.keys(answers).length && supportedMatches.length === 1 && data.tier !== 'REJECTED')
+                    ? 'CONFIRMED'
+                    : (data.tier || 'INDETERMINATE');
+
+                let out = '<div class="badge-row">';
+                out += '<span class="badge tier-' + esc(effectiveTier) + '">' + esc(effectiveTier) + '</span>';
+                if (top.wpa_schedule) {
+                    out += '<span class="badge ' + wpaClass(top.wpa_schedule) + '">' + esc(top.wpa_schedule) + '</span>';
+                }
+                if (data.engine) {
+                    out += '<span class="badge engine-pill">' + esc(data.engine) + '</span>';
+                }
+                out += '</div>';
+                if (data.abstain && effectiveTier !== 'CONFIRMED') {
+                    out += '<p class="fine">Do not finalise a species on this photograph alone — verify with the morphological key below.</p>';
+                }
+
+                matches.forEach(function (match, index) {
+                    const allowed = speciesAllowed(match.species_id);
+                    const cls = Object.keys(answers).length
+                        ? (allowed ? 'match-row supported' : 'match-row dimmed')
+                        : 'match-row';
+                    const confidence = Number(match.confidence != null ? match.confidence : match.score);
+                    const pct = Number.isFinite(confidence) ? (confidence * 100).toFixed(1) + '%' : '';
+                    out += '<div class="' + cls + '">';
+                    out += '<strong>#' + (index + 1) + ' ' + esc(match.common_name || '') + '</strong><br>';
+                    out += '<em>' + esc(match.scientific_name || '') + '</em>';
+                    out += '<div class="meta">' + esc(pct);
+                    if (match.family) out += ' · ' + esc(match.family);
+                    if (match.iucn_status) out += ' · IUCN ' + esc(match.iucn_status);
+                    if (match.cites_appendix) out += ' · CITES ' + esc(match.cites_appendix);
+                    out += '</div>';
+                    if (match.key_character) {
+                        out += '<div class="meta">' + esc(match.key_character) + '</div>';
+                    }
+                    if (match.reference_image_url) {
+                        const src = resolvePlateUrl(match.reference_image_url);
+                        out += '<img class="plate" alt="Reference plate" src="' + esc(src) + '" onerror="this.style.display=\'none\'">';
+                    }
+                    out += '</div>';
+                });
+
+                if (data.pairwise_discriminator) {
+                    out += '<div class="callout"><strong>How to tell #1 from #2.</strong><br>'
+                        + esc(data.pairwise_discriminator) + '</div>';
+                }
+                if (data.warnings && data.warnings.length) {
+                    out += '<ul class="warnings">';
+                    data.warnings.forEach(function (warning) {
+                        out += '<li>' + esc(warning) + '</li>';
+                    });
+                    out += '</ul>';
+                }
+
+                if (questions.length) {
+                    out += '<div class="questions"><strong>Check what you see (Interactive MorphKey)</strong>';
+                    out += '<p class="fine">Tap an observed trait to narrow the Top-3 candidates in real time.</p>';
+                    questions.forEach(function (question) {
+                        out += '<div class="question" data-character="' + esc(question.character) + '">';
+                        out += '<p>' + esc(question.prompt || question.label) + '</p>';
+                        (question.options || []).forEach(function (option) {
+                            const selected = answers[question.character]
+                                && answers[question.character].value === option.value;
+                            out += '<button type="button" class="option' + (selected ? ' selected' : '') + '" data-character="'
+                                + esc(question.character) + '" data-value="' + esc(option.value) + '">'
+                                + esc(option.label) + '</button>';
+                        });
+                        out += '</div>';
+                    });
+                    out += '</div>';
+                }
+                return out;
+            }
+
+            function paint() {
+                const questions = activeQuestions();
+                result.innerHTML = html(questions);
+                result.querySelectorAll('button.option').forEach(function (button) {
+                    button.addEventListener('click', function () {
+                        const character = button.getAttribute('data-character');
+                        const value = button.getAttribute('data-value');
+                        const question = questions.find(function (item) { return item.character === character; });
+                        const option = (question && question.options || []).find(function (item) {
+                            return item.value === value;
+                        });
+                        if (!option) return;
+                        if (answers[character] && answers[character].value === value) {
+                            delete answers[character];
+                        } else {
+                            answers[character] = Object.assign({}, option, { _question: question });
+                        }
+                        paint();
+                    });
+                });
+            }
+            paint();
+        }
 
         async function uploadAndIdentify(base64Data, filename, mimeType) {
-            status.textContent = "Processing...";
+            status.textContent = 'Processing…';
             result.style.display = 'none';
+            result.innerHTML = '';
             errorBox.style.display = 'none';
-
             const base64String = base64Data.split(',')[1];
 
-            // 1. Upload to Google Drive (Background)
             if (GOOGLE_SCRIPT_URL !== 'YOUR_GOOGLE_APPS_SCRIPT_URL_HERE') {
                 fetch(GOOGLE_SCRIPT_URL, {
                     method: 'POST',
                     mode: 'no-cors',
-                    body: JSON.stringify({
-                        filename: filename,
-                        mimeType: mimeType,
-                        data: base64String
-                    })
-                }).catch(e => console.error("Google Drive Upload Failed:", e));
+                    body: JSON.stringify({ filename: filename, mimeType: mimeType, data: base64String })
+                }).catch(function () {});
             }
 
-            // 2. Send to Python API for Identification
-            if (PYTHON_API_URL.includes('YOUR_PYTHON_API_URL_HERE')) {
-                 status.textContent = "Please configure your API endpoints.";
-                 errorBox.style.display = 'block';
-                 errorText.innerHTML = "You must deploy <code>api.py</code> and set <code>PYTHON_API_URL</code> in <code>docs/index.html</code> to see real results.";
-                 return;
-            }
-
+            const state = document.getElementById('state-select').value;
             try {
-                // Wake BioCLIP first (cold start can take several minutes).
-                status.textContent = "Waking AI model (first time can take 5–10 minutes)...";
-                const warm = await fetch(WARMUP_URL, { method: 'GET' });
-                if (!warm.ok) {
-                    throw new Error(`Warmup failed: ${warm.status}. Check Cloud Run / spend cap.`);
-                }
-
-                status.textContent = "Identifying species...";
-                const response = await fetch(PYTHON_API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image_base64: base64String })
-                });
-
-                if (!response.ok) {
-                    const detail = await response.text();
-                    if (response.status === 503) {
-                        throw new Error("Service unavailable (503). Often a cold start, out of memory, or spend cap. Wait 1 minute and try again. " + detail.slice(0, 120));
-                    }
-                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                status.textContent = "";
-
-                if (data.status === 'success' && data.matches && data.matches.length > 0) {
-                    result.style.display = 'block';
-                    let html = '';
-                    data.matches.forEach((match, index) => {
-                        html += `
-                            <div class="match-row">
-                                <strong>#${index + 1}:</strong> <em>${match.scientific_name}</em><br>
-                                ${match.common_name}<br>
-                                Score: ${(match.score * 100).toFixed(1)}
-                            </div>
-                        `;
-                    });
-                    speciesMatches.innerHTML = html;
-                } else {
-                    errorBox.style.display = 'block';
-                    errorText.innerHTML = "Unable to confidently identify matches.";
-                }
+                const data = await identify({ image_base64: base64String, state: state }, base64Data);
+                status.textContent = '';
+                updateModeLine();
+                await render(data);
             } catch (error) {
-                status.textContent = "";
+                status.textContent = '';
                 errorBox.style.display = 'block';
-                errorText.textContent = error.message || "Identification failed. Ensure the API is running and reachable.";
-                console.error('Error:', error);
+                errorText.textContent = error.message || 'Identification failed.';
             }
         }
     </script>

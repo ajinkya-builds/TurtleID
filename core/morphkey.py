@@ -397,3 +397,56 @@ def most_discriminating(observations: dict[str, str], candidates: list[str]) -> 
             best, best_balance = char, balance
 
     return best
+
+
+def verification_questions(
+    candidates: list[str],
+    *,
+    limit: int = 3,
+) -> list[dict]:
+    """The few morphological questions that split a shortlist.
+
+    Each item has a human-readable label, a prompt, and the options that
+    divide the candidates. Built by calling `most_discriminating` repeatedly
+    so the next question is the one that still splits whoever remains.
+    """
+    observations: dict[str, str] = {}
+    questions: list[dict] = []
+    shortlist = [sid for sid in candidates if sid]
+    for _ in range(max(0, limit)):
+        character = most_discriminating(observations, shortlist)
+        if not character:
+            break
+        label, states = CHARACTERS[character]
+        prompt = label if label.endswith("?") else f"What do you see for: {label}?"
+        options = []
+        for code, text in states.items():
+            matching: list[str] = []
+            uninformative: list[str] = []
+            for sid in shortlist:
+                expected = MATRIX.get(sid, {}).get(character)
+                if expected is None:
+                    uninformative.append(sid)
+                    continue
+                allowed = expected if isinstance(expected, tuple) else (expected,)
+                if code in allowed:
+                    matching.append(sid)
+            if not matching and not uninformative:
+                continue
+            options.append({
+                "value": code,
+                "label": text,
+                "species_ids": matching,
+                "uninformative_species_ids": uninformative,
+            })
+        if len(options) < 2:
+            observations[character] = "__skip__"
+            continue
+        questions.append({
+            "character": character,
+            "label": label,
+            "prompt": prompt,
+            "options": options,
+        })
+        observations[character] = "__asked__"
+    return questions

@@ -146,6 +146,36 @@ def _head_from_animal(animal: Image.Image) -> Image.Image:
     return animal.crop((0, 0, width, band))
 
 
+def crop_animal_and_head(
+    image: Image.Image,
+    *,
+    detector: str | None = None,
+) -> CropBundle:
+    """Animal box plus the heuristic head band (top 38% of that crop).
+
+    `detector` is `grounding_dino` (default) or `border`. The border path is
+    the same fallback GroundingDINO uses when it finds no box, and it does
+    not load the detector. Override with TURTLEID_DETECTOR.
+    """
+    import os
+
+    mode = (detector or os.environ.get("TURTLEID_DETECTOR") or "grounding_dino").strip().lower()
+    try:
+        rgb = ImageOps_exif(image).convert("RGB")
+    except Exception:
+        rgb = image.convert("RGB")
+
+    if mode in {"border", "border_crop", "none", "off"}:
+        animal = crop_to_animal(rgb)
+        return CropBundle(
+            full=rgb,
+            animal=animal,
+            head=_head_from_animal(animal),
+            method="border_crop",
+        )
+    return prepare_crops(rgb)
+
+
 def prepare_crops(image: Image.Image) -> CropBundle:
     """Return full RGB, animal crop, and optional head crop."""
     try:

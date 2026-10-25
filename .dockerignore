@@ -20,7 +20,9 @@ negatives
 incoming
 data/field_gallery
 docs
-scripts
+scripts/*
+!scripts/__init__.py
+!scripts/preload_models.py
 training
 tests
 *.md
